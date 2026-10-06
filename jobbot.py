@@ -34,8 +34,19 @@ seen = set(json.loads(SEEN.read_text())) if SEEN.exists() else set()
 resume = pathlib.Path("base_resume.txt").read_text()
 
 
+def get(url):
+    for i in range(3):
+        try:
+            r = requests.get(url, timeout=45)
+            r.raise_for_status()
+            return r
+        except Exception as e:
+            if i == 2: raise
+            time.sleep(5 * (i + 1))
+
+
 def fetch_greenhouse(slug):
-    r = requests.get(f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true", timeout=20)
+    r = get(f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true")
     for j in r.json().get("jobs", []):
         yield dict(id=f"gh-{j['id']}", company=slug, title=j["title"],
                    location=j.get("location", {}).get("name", ""),
@@ -43,7 +54,7 @@ def fetch_greenhouse(slug):
 
 
 def fetch_lever(slug):
-    r = requests.get(f"https://api.lever.co/v0/postings/{slug}?mode=json", timeout=20)
+    r = get(f"https://api.lever.co/v0/postings/{slug}?mode=json")
     for j in r.json():
         yield dict(id=f"lv-{j['id']}", company=slug, title=j["text"],
                    location=j.get("categories", {}).get("location", ""),
@@ -52,8 +63,8 @@ def fetch_lever(slug):
 
 def relevant(j):
     t, l = j["title"].lower(), j["location"].lower()
-    return any(k in t for k in CONFIG["title_keywords"]) and \
-           any(k in l for k in CONFIG["location_keywords"])
+    hit = lambda words, text: any(re.search(r"\b" + re.escape(k) + r"\b", text) for k in words)
+    return hit(CONFIG["title_keywords"], t) and hit(CONFIG["location_keywords"], l)
 
 
 def ask(prompt, system, max_tokens=1500):
@@ -67,7 +78,7 @@ def ask(prompt, system, max_tokens=1500):
         time.sleep(7)  # stay under free-tier requests-per-minute
         r = requests.post(url, json=body, timeout=90,
                           headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"]})
-        if r.status_code == 429:
+        if r.status_code in (429, 500, 502, 503, 504):
             time.sleep(30 * (attempt + 1)); continue
         r.raise_for_status()
         parts = r.json()["candidates"][0]["content"]["parts"]
@@ -110,9 +121,9 @@ def main():
     print(f"{len(jobs)} fetched, {len(new)} new relevant")
     rows = []
     for j in new[: CONFIG["max_per_run"]]:
-        seen.add(j["id"])
         try:
             s = score(j)
+            seen.add(j["id"])
             if s["score"] < CONFIG["min_score"]:
                 continue
             cv, cl = tailor(j)
