@@ -16,8 +16,8 @@ import requests
 
 CONFIG = {
     "model": os.environ.get("GEMINI_MODEL", "gemini-flash-latest"),
-    "min_score": 65,                 # only prepare jobs scoring >= this
-    "max_per_run": 15,               # cap so quality stays high
+    "min_score": 40,                 # only prepare jobs scoring >= this
+    "max_per_run": 30,               # cap so quality stays high
     "title_keywords": ["penetration", "vapt", "security analyst", "soc",
                        "red team", "application security", "detection"],
     "location_keywords": ["india", "mumbai", "thane", "pune", "remote"],
