@@ -1,0 +1,41 @@
+name: jobbot
+
+on:
+  schedule:
+    - cron: "30 20 * * *"   # 02:00 AM IST (GitHub uses UTC)
+  workflow_dispatch:         # lets you run it manually with a button
+
+permissions:
+  contents: write            # needed to commit queue.csv back to the repo
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install requests
+
+      - name: Create resume from secret
+        run: echo "$BASE_RESUME" > base_resume.txt
+        env:
+          BASE_RESUME: ${{ secrets.BASE_RESUME }}
+
+      - name: Run bot
+        run: python jobbot.py
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+      - name: Save results
+        run: |
+          rm -f base_resume.txt
+          git config user.name "jobbot"
+          git config user.email "jobbot@users.noreply.github.com"
+          git add queue.csv seen.json out/ || true
+          git diff --cached --quiet || git commit -m "jobbot run $(date -u +%F)"
+          git push
